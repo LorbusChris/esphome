@@ -25,9 +25,8 @@ static const uint8_t MS8607_PROM_COUNT = (MS8607_PROM_END - MS8607_PROM_START) >
 static const uint8_t MS8607_CMD_H_RESET = 0xFE;
 /// Read relative humidity, without holding i2c master
 static const uint8_t MS8607_CMD_H_MEASURE_NO_HOLD = 0xF5;
-/// Temperature correction coefficient for Relative Humidity from datasheet
-static const float MS8607_H_TEMP_COEFFICIENT = -0.18;
-
+/// Correction coefficient for Relative Humidity
+static const float MS8607_RH_LSB = 0.0019073486328125;
 /// Read the converted analog value, either D1 (pressure) or D2 (temperature)
 static const uint8_t MS8607_CMD_ADC_READ = 0x00;
 
@@ -336,9 +335,7 @@ void MS8607Component::read_humidity_(float temperature_float) {
     this->status_set_warning();
     return;
   }
-
-  // "the measurement is stored into 14 bits. The two remaining LSBs are used for transmitting status information.
-  // Bit1 of the two LSBS must be set to '1'. Bit0 is currently not assigned"
+  ESP_LOGD(TAG, "Raw Humidty Bytes: 0x%02X 0x%02X 0x%02X", bytes[0], bytes[1], bytes[2]);
   uint16_t humidity = encode_uint16(bytes[0], bytes[1]);
   uint8_t const expected_crc = bytes[2];
   uint8_t const actual_crc = hsensor_crc_check(humidity);
@@ -348,21 +345,12 @@ void MS8607Component::read_humidity_(float temperature_float) {
     this->status_set_warning();
     return;
   }
-  if (!(humidity & 0x2)) {
-    // data sheet says Bit1 should always set, but nothing about what happens if it isn't
-    ESP_LOGE(TAG, "Humidity status bit was not set to 1?");
-  }
-  humidity &= ~(0b11);  // strip status & unassigned bits from data
 
-  // map 16 bit humidity value into range [-6%, 118%]
-  float const humidity_partial = double(humidity) / (1 << 16);
-  float const humidity_percentage = lerp(humidity_partial, -6.0, 118.0);
-  float const compensated_humidity_percentage =
-      humidity_percentage + (20 - temperature_float) * MS8607_H_TEMP_COEFFICIENT;
-  ESP_LOGD(TAG, "Compensated for temperature, humidity=%.2f%%", compensated_humidity_percentage);
+  float const humidity_percentage = humidity * MS8607_RH_LSB - 6;
+  ESP_LOGD(TAG, "Humidity=%u%%", humidity_percentage);
 
   if (this->humidity_sensor_ != nullptr) {
-    this->humidity_sensor_->publish_state(compensated_humidity_percentage);
+    this->humidity_sensor_->publish_state(humidity_percentage);
   }
   this->status_clear_warning();
 }
