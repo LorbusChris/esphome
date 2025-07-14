@@ -347,7 +347,7 @@ void MS8607Component::read_humidity_(float temperature_float) {
   }
 
   float const humidity_percentage = humidity * MS8607_RH_LSB - 6;
-  ESP_LOGD(TAG, "Humidity=%u%%", humidity_percentage);
+  ESP_LOGD(TAG, "Humidity=%.2f%%", humidity_percentage);
 
   if (this->humidity_sensor_ != nullptr) {
     this->humidity_sensor_->publish_state(humidity_percentage);
